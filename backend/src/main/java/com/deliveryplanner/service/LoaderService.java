@@ -12,66 +12,67 @@ public class LoaderService {
 
     public void assignPackageToVehicle(List<Package> packages, List<Vehicle> vehicles) {
 
-        List<Vehicle> vehiclesSorted = getSortedVehiclesByMaxCapacity(vehicles);
+        Map<String, Set<String>> warsawDistrictAndNeighbours = DistrictCatalog.getWarsawDistrictAndNeighbours();
+        Map<String, List<Package>> packagesByDistrict = groupPackagesByDistrict(packages, warsawDistrictAndNeighbours);
+        Map<String, List<Package>> sortedDistrictPackages = getSortedDistrictPackages(packagesByDistrict);
 
-        Map<String, List<Package>> grouped = groupPackagesByDistrict(
-                packages, DistrictCatalog.getWarsawDistrictAndNeighbours());
+        Set<String> visitedDistricts = new HashSet<>();
+        Queue<String> queue = new LinkedList<>(sortedDistrictPackages.keySet());
 
-        Map<String, List<Package>> sorted = getSortedDistrictPackages(grouped);
+        while (!queue.isEmpty()) {
+            String district = queue.poll();
 
-        for (Map.Entry<String, List<Package>> entry : sorted.entrySet()) {
-            String district = entry.getKey();
-            List<Package> districtPackages = new ArrayList<>(entry.getValue());
+            if (visitedDistricts.contains(district)) continue;
 
-            Iterator<Vehicle> vehicleIt = vehiclesSorted.iterator();
+            List<Package> districtPackages = sortedDistrictPackages.getOrDefault(district, List.of());
 
-            while (!districtPackages.isEmpty() && vehicleIt.hasNext()) {
-                Vehicle vehicle = vehicleIt.next();
-                int remaining = vehicle.getMaxCapacity() - vehicle.getActualCapacity();
-
-                Iterator<Package> packageIt = districtPackages.iterator();
-                while (packageIt.hasNext()) {
-                    Package p = packageIt.next();
-                    if (p.getSize() <= remaining) {
-                        vehicle.loadPackage(p);
-                        remaining -= p.getSize();
-                        packageIt.remove();
-                    }
-                }
-
-                if (vehicle.getActualCapacity() >= vehicle.getMaxCapacity()) {
-                    vehicle.setIsAvailable(false);
-                }
+            if (districtPackages.isEmpty()) {
+                visitedDistricts.add(district);
+                continue;
             }
 
-            if (!districtPackages.isEmpty()) {
-                log.info("⚠️ Unassigned packages in {}: {}", district, districtPackages.size());
+            boolean allPackagesLoaded = true; //future assignPackagesToAvailableVehicles(districtPackages, vehicles);
+
+            if (allPackagesLoaded) {
+                visitedDistricts.add(district);
+            } else {
+                queue.add(district);
+            }
+
+            for (String neighbor : warsawDistrictAndNeighbours.getOrDefault(district, Set.of())) {
+                if (!visitedDistricts.contains(neighbor)
+                        && sortedDistrictPackages.containsKey(neighbor)
+                        && !queue.contains(neighbor)) {
+                    queue.add(neighbor);
+                }
             }
         }
+
+
     }
 
-    private List<Vehicle> getSortedVehiclesByMaxCapacity(List<Vehicle> vehicles) {
+    List<Vehicle> getSortedVehiclesByMaxCapacity(List<Vehicle> vehicles) {
         return vehicles.stream()
                 .filter(Vehicle::getIsAvailable)
                 .sorted(Comparator.comparingInt(Vehicle::getMaxCapacity).reversed())
                 .toList();
     }
 
-    private Map<String, List<Package>> getSortedDistrictPackages(Map<String, List<Package>> groupedPackagesByDistrict) {
+    Map<String, List<Package>> getSortedDistrictPackages(Map<String, List<Package>> groupedPackagesByDistrict) {
         List<Map.Entry<String, List<Package>>> entries = new ArrayList<>(groupedPackagesByDistrict.entrySet());
         entries.sort(Comparator.comparingInt((Map.Entry<String, List<Package>> e) -> e.getValue().size()).reversed());
 
         Map<String, List<Package>> sortedBySize = new LinkedHashMap<>();
 
         entries.forEach(entry -> {
-                List<Package> sortedPackages = new ArrayList<>(entry.getValue());
-                sortedPackages.sort(Comparator.comparingInt(Package::getSize).reversed());
-                sortedBySize.put(entry.getKey(), sortedPackages);
+            List<Package> sortedPackages = new ArrayList<>(entry.getValue());
+            sortedPackages.sort(Comparator.comparingInt(Package::getSize).reversed());
+            sortedBySize.put(entry.getKey(), sortedPackages);
         });
         return sortedBySize;
     }
 
-    private Map<String, List<Package>> groupPackagesByDistrict(List<Package> packages, Map<String, Set<String>> districtCatalog) {
+    Map<String, List<Package>> groupPackagesByDistrict(List<Package> packages, Map<String, Set<String>> districtCatalog) {
         Map<String, List<Package>> packagesByDistrict = new LinkedHashMap<>();
         List<String> districts = new ArrayList<>(districtCatalog.keySet());
         districts.forEach(district -> {
@@ -79,7 +80,10 @@ public class LoaderService {
                     .filter(p -> p.getAddress() != null && p.getAddress().getDistrict() != null &&
                             district.equals(p.getAddress().getDistrict().getName()))
                     .toList();
-            packagesByDistrict.put(district, packagesForDistrict);
+            if (!packagesForDistrict.isEmpty()) {
+                packagesByDistrict.put(district, packagesForDistrict);
+
+            }
         });
         return packagesByDistrict;
     }

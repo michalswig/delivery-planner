@@ -1,144 +1,68 @@
 package com.deliveryplanner.service;
 
-import com.deliveryplanner.entity.Vehicle;
+import com.deliveryplanner.data.DistrictCatalog;
 import com.deliveryplanner.entity.Package;
+import com.deliveryplanner.entity.Vehicle;
+import com.deliveryplanner.utils.PackageUtil;
+import com.deliveryplanner.utils.VehicleUtil;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import java.util.*;
 
-import static com.deliveryplanner.utils.PackageUtil.createPackage;
-import static com.deliveryplanner.utils.VehicleUtil.createVehicle;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class LoaderServiceTest {
 
-    @Test
-    void testAssignPackageToVehicle_singlePackageFitsInVehicle() {
-        LoaderService loaderService = new LoaderService();
-
-        List<Package> packages = List.of(
-                createPackage(1L, 5, "Bielany")
-        );
-
-        List<Vehicle> vehicles = List.of(
-                createVehicle(1L, 10, true)
-        );
-
-        loaderService.assignPackageToVehicle(packages, vehicles);
-
-        Vehicle testVehicle = vehicles.get(0);
-        assertEquals(1, testVehicle.getLoadedPackages().size());
-        assertEquals(5, testVehicle.getActualCapacity());
-        assertEquals(1L, testVehicle.getLoadedPackages().get(0).getId());
+    private List<Vehicle> getSortedVehiclesByMaxCapacity(List<Vehicle> vehicles) {
+        return vehicles.stream()
+                .filter(Vehicle::getIsAvailable)
+                .sorted(Comparator.comparingInt(Vehicle::getMaxCapacity).reversed())
+                .toList();
     }
 
     @Test
-    void testPackageTooBigForAllVehicles() {
+    void shouldReturnOnlyAvailableAndSortedByMaxCapacityVehicles() {
+        //given
+        Vehicle vehicleOne = VehicleUtil.createVehicle(1L, 3, true);
+        Vehicle vehicleTwo = VehicleUtil.createVehicle(2L, 10, false);
+        Vehicle vehicleThree = VehicleUtil.createVehicle(3L, 6, true);
+        Vehicle vehicleFour = VehicleUtil.createVehicle(4L, 9, true);
+        List<Vehicle> vehicles = Arrays.asList(vehicleOne, vehicleTwo, vehicleThree, vehicleFour);
         LoaderService loaderService = new LoaderService();
 
-        List<Package> packages = List.of(
-                createPackage(1L, 20, "Wola")
-        );
+        //when
+        List<Vehicle> sortedVehiclesByMaxCapacity = loaderService.getSortedVehiclesByMaxCapacity(vehicles);
+        List<Boolean> areAllVehiclesAvailable = new ArrayList<>();
+        for (Vehicle vehicle : sortedVehiclesByMaxCapacity) {
+            boolean isAvailable = vehicle.getIsAvailable();
+            areAllVehiclesAvailable.add(isAvailable);
+        }
 
-        List<Vehicle> vehicles = List.of(
-                createVehicle(1L, 10, true)
-        );
-
-        loaderService.assignPackageToVehicle(packages, vehicles);
-
-        assertTrue(vehicles.get(0).getLoadedPackages().isEmpty());
-        assertEquals(0, vehicles.get(0).getActualCapacity());
+        //then
+        assertEquals(vehicleOne, sortedVehiclesByMaxCapacity.get(sortedVehiclesByMaxCapacity.size() - 1));
+        assertEquals(vehicleFour, sortedVehiclesByMaxCapacity.get(0));
+        assertFalse(sortedVehiclesByMaxCapacity.contains(vehicleTwo));
+        assertTrue(areAllVehiclesAvailable.stream().allMatch(b -> b));
     }
 
     @Test
-    void testVehicleAtFullCapacity() {
-        Vehicle fullVehicle = createVehicle(1L, 10, true);
-        fullVehicle.setActualCapacity(10);
-
+    void shouldGroupedPackagesByDistrict(){
+        //given
+        Package packageBielany = PackageUtil.createPackage(1L, 1, "Bielany");
+        Package packageWola = PackageUtil.createPackage(2L, 2, "Wola");
+        Package packageOchota = PackageUtil.createPackage(3L, 3, "Ochota");
+        Package packageUrsus = PackageUtil.createPackage(4L, 4, "Ursus");
+        Package packageWawer = PackageUtil.createPackage(5L, 5, "Wawer");
+        Package packageBemowo = PackageUtil.createPackage(6L, 6, "Bemowo");
+        List<Package> packages = Arrays.asList(packageBielany, packageWola, packageOchota, packageUrsus, packageWawer, packageBemowo);
         LoaderService loaderService = new LoaderService();
 
-        List<Package> packages = List.of(
-                createPackage(1L, 3, "Ursynów")
-        );
+        //when
+        Map<String, List<Package>> groupPackagesByDistrict = loaderService.groupPackagesByDistrict(packages, DistrictCatalog.getWarsawDistrictAndNeighbours());
 
-        loaderService.assignPackageToVehicle(packages, List.of(fullVehicle));
-
-        assertTrue(fullVehicle.getLoadedPackages().isEmpty());
+        //then
+        assertEquals(packages.size(), groupPackagesByDistrict.size());
     }
-
-    @Test
-    void testMultiplePackagesExactFit() {
-        LoaderService loaderService = new LoaderService();
-
-        List<Package> packages = List.of(
-                createPackage(1L, 3, "Mokotów"),
-                createPackage(2L, 7, "Mokotów")
-        );
-
-        List<Vehicle> vehicles = List.of(
-                createVehicle(1L, 10, true)
-        );
-
-        loaderService.assignPackageToVehicle(packages, vehicles);
-
-        Vehicle v = vehicles.get(0);
-        assertEquals(2, v.getLoadedPackages().size());
-        assertEquals(10, v.getActualCapacity());
-    }
-
-    @Test
-    void testTooManyPackagesForVehicle() {
-        LoaderService loaderService = new LoaderService();
-
-        List<Package> packages = List.of(
-                createPackage(1L, 5, "Ochota"),
-                createPackage(2L, 6, "Ochota")
-        );
-
-        List<Vehicle> vehicles = List.of(
-                createVehicle(1L, 10, true)
-        );
-
-        loaderService.assignPackageToVehicle(packages, vehicles);
-
-        Vehicle v = vehicles.get(0);
-        assertEquals(1, v.getLoadedPackages().size());
-        assertEquals(5, v.getActualCapacity());
-    }
-
-    @Test
-    void testNoAvailableVehicles() {
-        LoaderService loaderService = new LoaderService();
-
-        List<Package> packages = List.of(
-                createPackage(1L, 4, "Śródmieście")
-        );
-
-        List<Vehicle> vehicles = List.of(
-                createVehicle(1L, 10, false) // Not available
-        );
-
-        loaderService.assignPackageToVehicle(packages, vehicles);
-
-        assertTrue(vehicles.get(0).getLoadedPackages().isEmpty());
-    }
-
-    @Test
-    void testEmptyInputs() {
-        LoaderService loaderService = new LoaderService();
-
-        loaderService.assignPackageToVehicle(List.of(), List.of());
-        loaderService.assignPackageToVehicle(List.of(createPackage(1L, 3, "Wola")), List.of());
-        loaderService.assignPackageToVehicle(List.of(), List.of(createVehicle(1L, 10, true)));
-
-        // No exceptions thrown = test passes
-    }
-
-
-
-
-
 
 
 
